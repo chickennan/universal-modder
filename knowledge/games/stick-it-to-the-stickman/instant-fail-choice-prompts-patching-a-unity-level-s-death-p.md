@@ -127,8 +127,14 @@ That line also names the concrete class hitting the *base* prefix - `LevelLogicC
 inherits `TryManagePlayerDeath` rather than overriding it, which is exactly the case an
 overrides-only patch misses.
 
-**Not verified:** visual layout. Screen capture on this machine does not show the Unity render at
-all (Gotcha 7), so the UI was confirmed by a human looking at the screen, not by an image.
+**Visual layout** was confirmed by a human looking at the screen: the prompt and the FAIL card both
+rendered correctly and the text alignment was good. It could not be confirmed *by an agent*, because
+screen capture on this machine does not show the Unity render at all (Gotcha 7). Worth separating
+those two claims - a human oracle is still an oracle.
+
+**Not verified:** the other seven levels that declare their own `TryManagePlayerDeath` override
+(BillionaireBunker, CinematicXY, CinematicXZ, CityMap, Credits, EmployeeEvaluation, Manufacturing,
+Shareholders) are patched but untested in play. Only Normal Tower has been run.
 
 ## Gotchas
 
@@ -181,7 +187,8 @@ all (Gotcha 7), so the UI was confirmed by a human looking at the screen, not by
    while `gfxcapture=window_title=` times out after 20 s. **Cause:** the capture is not seeing the
    Unity render on this setup. **Fix:** do not trust the image, and do not commit it. Compare two
    captures taken in deliberately different game states first: if the composition matches, the
-   capture is wrong. Use the log as the oracle instead.
+   capture is wrong. Fall back to the log as the oracle, and have a human confirm anything visual -
+   but say plainly that a human confirmed it, rather than implying the agent did.
 
 8. **Symptom:** the in-game debug console seems to toggle on F1. **Cause:** it is bound to backquote.
    **Fix:** use backquote - but note that opening it is the most reliable way to trigger Gotcha 3.
@@ -206,9 +213,9 @@ Single mod, a few hours across two sessions. No API spend.
 
 ## Open questions
 
+- The other seven levels with their own `TryManagePlayerDeath` override are patched but untested in
+  play; they should get one run each before anyone calls the mod finished on those levels.
 - Get a working window-capture path so the UI can be verified by an agent rather than by eye.
 - `ScriptableEnum`'s dictionary reset is a shared-state hazard for any mod that enumerates level
   assets mid-run; a safer long-term fix would be reading `LevelManager.Level` only and never
   touching `ScriptableEnum` from a plugin.
-- The other seven levels with their own `TryManagePlayerDeath` override are patched but untested in
-  play; they should get one run each before anyone calls the mod finished on those levels.
