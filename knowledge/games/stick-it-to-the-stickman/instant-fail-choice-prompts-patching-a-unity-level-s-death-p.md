@@ -104,22 +104,31 @@ object) but the plugin's `Update` and its `Logger` do not. Anything long-lived n
 
 ## Verification
 
-Oracle was the mod's own log during a **hand-played Normal Tower run** (a real player crossed room
+Oracle was the mod's own log during **two hand-played Normal Tower runs** (a real player crossed room
 boundaries and deliberately took a fatal choice), not a screenshot.
 
-Confirmed: 8 death overrides patched; level gate rejects `Open World`
+Confirmed: 8 death overrides patched plus the base handler; level gate rejects `Open World`
 (`levelAllowed=False`); level name resolves to `Normal Tower` with `levelIsLoaded=True`; first-room
 gate skips room 1; prompt fires on room 2 with `FreezeTime() -> timeScale=0` held for 15 s; fatal
-choice detected; `hero health before kill: 2` then `TakeDamage(OutOfBounds, 1) -> health now 0,
-IsAlive=False` then `instant kill applied`; 1920x1080 card loaded; retry calls
-`LevelManager.RestartLevel()` and re-arms with no leaked state.
+choice detected; `hero health before kill: 12` then the game's own handler suppressed, then
+`TakeDamage(OutOfBounds, 1) -> health now 0, IsAlive=False`, then `instant kill applied`; 1920x1080
+card loaded; retry calls `LevelManager.RestartLevel()` and re-arms with no leaked state.
 
-**Not verified:**
+The suppression line is the load-bearing evidence, and note its **ordering** - the game's handler is
+suppressed *before* `IsAlive=False`, so the level controller's death logic genuinely never ran:
 
-- That the base `TryManagePlayerDeath` prefix actually engages - the fix is confirmed *installed*
-  (log reports 9 death handlers) but the `suppressed ...` line needs one more played run.
-- Visual layout. Screen capture on this machine does not show the Unity render at all (Gotcha 7),
-  so the UI was confirmed by a human looking at the screen, not by an image.
+```
+hero health before kill: 12 (killable-override, i-frames, overtime all being cleared)
+suppressed LevelLogicControllerTower.TryManagePlayerDeath (Player 0) - STICKMIN owns this death
+TakeDamage(OutOfBounds, 1) -> health now 0, IsAlive=False
+```
+
+That line also names the concrete class hitting the *base* prefix - `LevelLogicControllerTower`
+inherits `TryManagePlayerDeath` rather than overriding it, which is exactly the case an
+overrides-only patch misses.
+
+**Not verified:** visual layout. Screen capture on this machine does not show the Unity render at
+all (Gotcha 7), so the UI was confirmed by a human looking at the screen, not by an image.
 
 ## Gotchas
 
@@ -130,12 +139,16 @@ IsAlive=False` then `instant kill applied`; 1920x1080 card loaded; retry calls
    upgrade. Include `levelNow` / `levelIsLoaded` in any status output so this fails loudly.
 
 2. **Symptom:** the death hooks "patched 8 types" and still did nothing in the level being tested.
-   **Cause:** only 8 classes override `TryManagePlayerDeath`; Normal Tower is not one of them, so an
-   overrides-only patch never touched the base method that actually ran. **Fix:** patch the base
-   *and* the overrides. Neither alone is enough - an override that calls `base` keeps running its own
+   **Cause:** only 8 classes override `TryManagePlayerDeath`, and Normal Tower's controller
+   (`LevelLogicControllerTower`) is not one of them - it inherits the base method, so an
+   overrides-only patch never touched the code that actually ran. **Fix:** patch the base *and* the
+   overrides. Neither alone is enough - an override that calls `base` keeps running its own
    post-base code if only the base is prefixed, and non-overriding levels are unprotected if only the
    overrides are. Discover overrides by reflection over `LevelLogicController` subclasses with
    declared-only method lookup, so a game update that adds one does not silently break the mod.
+   **Lesson:** patch the base of any virtual you need to own, and log the concrete
+   `__instance.GetType().Name` on interception - the class name in the log is how you notice which
+   path actually ran.
 
 3. **Symptom:** mod works in the main menu, appears totally dead in a level. **Cause:** the game
    destroys the BepInEx plugin `GameObject` seconds after startup; patches survive but `Update` and
@@ -193,8 +206,9 @@ Single mod, a few hours across two sessions. No API spend.
 
 ## Open questions
 
-- Confirm the base `TryManagePlayerDeath` prefix logs `suppressed` during a Normal Tower death.
 - Get a working window-capture path so the UI can be verified by an agent rather than by eye.
 - `ScriptableEnum`'s dictionary reset is a shared-state hazard for any mod that enumerates level
   assets mid-run; a safer long-term fix would be reading `LevelManager.Level` only and never
   touching `ScriptableEnum` from a plugin.
+- The other seven levels with their own `TryManagePlayerDeath` override are patched but untested in
+  play; they should get one run each before anyone calls the mod finished on those levels.
